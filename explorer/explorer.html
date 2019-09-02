@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="en-US">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BJCTA Deviation Report</title>
+    <script>
+      var state = {
+          url: "https://api2.dv8.line72.net",
+          pages: {},
+          pageStack: [],
+      };
+
+      Element.prototype.removeAll = function () {
+	  while (this.firstChild) { this.removeChild(this.firstChild); }
+	  return this;
+      };
+    </script>
+    <link type="text/css" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bulma/0.7.2/css/bulma.min.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.5.1/dist/leaflet.css"
+	  integrity="sha512-xwE/Az9zrjBIphAcBb3F6JVqxf46+CDLwfLMHloNu6KEQCAWi6HcDUbeOfBIptF7tcCzusKFjFw2yuvEpDL9wQ=="
+	  crossorigin=""/>
+    <script defer src="https://use.fontawesome.com/releases/v5.3.1/js/all.js"></script>
+    <script src="https://unpkg.com/leaflet@1.5.1/dist/leaflet.js"
+	    integrity="sha512-GffPMF3RvMeYyc1LWMHtK8EbPv0iNZ8/oTtHPx9/cc2ILxQ+u905qIwdpULaqDkyBKgOaB57QTMg7ztg8Jm2Og=="
+	    crossorigin=""></script>
+  </head>
+  <body style="height: 100vh;">
+    <section style="display: flex; flex-flow: column; height: 100vh;">
+    <section class="hero is-primary">
+      <div class="hero-body">
+        <div class="container">
+          <h1 class="title">
+            BJCTA Deviation Report
+          </h1>
+        </div>
+      </div>
+    </section>
+    <br />
+
+    <!-- <\!-- Error bar -\-> -->
+    <!-- <div id="error" style="display:none;"> -->
+    <!--   <article class="message is-danger"> -->
+    <!--     <div class="message-body"> -->
+    <!--       <span id="error-msg"></span> -->
+    <!--     </div> -->
+    <!--   </article> -->
+    <!-- </div> -->
+
+    <div id="content" style="padding-top: 25px; padding-left: 25px; padding-right: 25px; width: 100vw; flex: 2; overflow-x: hidden;">
+      
+      <!-- Page: Route List -->
+      <div id="route-page" style="display: none; height: 100%;">
+        <div class="columns" style="height: 100%;">
+          <!-- first column -->
+          <div class="column">
+          </div>
+
+          <!-- Primary columm -->
+          <div class="column is-half" style="height: 100%;"> 
+            <div id="route-container" style="height: 100%; overflow-y: auto;">
+            </div>
+          </div>
+
+          <!-- Empty third column -->
+          <div class="column">
+            <span />
+          </div>
+        </div>
+      </div>
+
+
+      <!-- Page: Trip List -->
+      <div id="trip-page" style="display: none; height: 100%;">
+        <div class="columns" style="height: 100%;">
+          <!-- Empty first column -->
+          <div class="column">
+            <div class="control">
+	      <button class="button is-link" id="trip-back">
+	        ⇦ Back
+	      </button>
+            </div>
+          </div>
+
+          <!-- Primary columm -->
+          <div class="column is-half" style="height: 100%;"> 
+            <h2 id="trip-header" class="title">
+            </h2>
+            
+            <div id="trip-container" style="height: 90%; overflow-y: auto;">
+            </div>
+          </div>
+          
+          <!-- Empty third column -->
+          <div class="column">
+            <span />
+          </div>
+        </div>
+      </div>
+
+      <!-- Page: Visualization -->
+      <div id="visualization-page" style="display: none; height: 100%;">
+        <div class="columns" style="height: 100%;">
+          <!-- first column -->
+          <div class="column is-narrow">
+            <div class="control">
+	      <button class="button is-link" id="visualization-back">
+	        ⇦ Back
+	      </button>
+            </div>
+            <br />
+            <nav class="panel" id="visualization-dates" style="overflow-y: auto; height: 90%; min-width: 200px;">
+            </nav>
+          </div>
+          
+          <!-- Primary columm -->
+          <div class="column" style="height: 100%;"> 
+            <h2 id="visualization-header" class="title">
+            </h2>
+
+            <div id="visualization-container" style="height: 90%;">
+              <div id="mapcontainer" style="height: 100%;">
+	        <div id="mapid" style="height: 100%;"></div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- third column -->
+          <div class="column is-narrow">
+            <div class="field">
+              <label class="label">Graph Type:</label>
+              <div class="select">
+                <select id="visualization-graph-type" >
+                  <option value="passengers" selected>Passengers On Board</option>
+                  <option value="deviation">Time Deviation</option>
+                </select>
+              </div>
+            </div>
+            <div class="field">
+              <label class="label">Playback Speed:</label>
+              <div class="select">
+                <select id="visualization-playback-speed">
+                  <option value=".5">½x</option>
+                  <option value="1" selected>1x</option>
+                  <option value="2">2x</option>
+                  <option value="4">4x</option>
+                  <option value="8">8x</option>
+                </select>
+              </div>
+            </div>
+            <div class="control">
+              <button class="button is-link" id="visualization-play">
+                Play
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    </section>
+    
+    <script>
+      var initialize = () => {
+          state.pages['routePage'] = RoutePage((route) => {
+              pushPage(state.pages['tripPage'], route);
+          });
+          state.pages['tripPage'] = TripPage((route, tripId, runs) => {
+              pushPage(state.pages['visPage'], route, {id: tripId, runs: runs});
+          }, () => {
+              popPage();
+          });
+          state.pages['visPage'] = VisPage((route) => {
+              popPage();
+          });
+
+          changePage(state.pages['routePage']);
+      }
+
+      /**
+       * replace the whole
+       * stack with a specific page
+       */
+      var changePage = (page, ...args) => {
+          state.pageStack.forEach((p) => {
+              p.onUnLoad();
+          });
+
+          page.onLoad(...args);
+          state.pageStack = [page];
+      }
+
+      /**
+       * push a new page onto the stack.
+       * This doesn't call unload on existing pages.
+       */
+      var pushPage = (page, ...args) => {
+          // hide everything on the stack
+          state.pageStack.forEach((p) => {
+              p.hide();
+          });
+
+          // load the new page and add it to the stack
+          page.onLoad(...args);
+          state.pageStack.push(page);
+      }
+
+      /**
+       * pop the top page from the stack and unload it.
+       */
+      var popPage = () => {
+          let page = state.pageStack.pop();
+          if (page) {
+              page.onUnLoad();
+          }
+
+          // show the stop of the stack
+          if (state.pageStack.length > 0) {
+              state.pageStack[state.pageStack.length - 1].show();
+          }
+      }
+      
+      var getRoutes = () => {
+          let body = {};
+          let url = new URL(`${state.url}/routes`);
+          url.search = new URLSearchParams(body);
+          
+          return fetch(url, {
+              method: 'GET',
+              headers: {
+                  'Content-type': 'application/json; charset=utf-8'
+              },
+          }).then((response) => {
+              return response.json();
+          }).then((routes) => {
+              // sort by rId
+              routes.sort((a, b) => parseInt(a.rId, 10) >= parseInt(b.rId, 10));
+
+              return routes;
+          }, (failure) => {
+              showFailure(failure);
+              return [];
+          });
+      }
+
+      var getTrips = (route) => {
+          let body = {
+              route_id: `eq.${route.id}`,
+              select: `id,tId,runId,name`,
+          };
+          let url = new URL(`${state.url}/trips`);
+	  url.search = new URLSearchParams(body);
+
+          return fetch(url, {
+              method: 'GET',
+              headers: {
+                  'Content-type': 'application/json; charset=utf-8'
+              }
+          }).then((response) => {
+              return response.json();
+          }).then((trips) => {
+              // group by the tripId
+              return trips.reduce((acc, trip) => {
+                  if (!Object.keys(acc).includes(trip['tId'])) {
+                      acc[trip['tId']] = [];
+                  }
+                  acc[trip['tId']].push(trip);
+
+                  return acc;
+              }, {});
+          }, (failure) => {
+              showFailure(failure);
+              return {};
+          });
+      }
+
+      var getTripDates = (tripIds) => {
+          let body = {
+              trip_id: `in.(${tripIds.join()})`,
+              order: 'date.asc',
+          };
+          let url = new URL(`${state.url}/trip_dates`);
+          url.search = new URLSearchParams(body);
+
+          return fetch(url, {
+              method: 'GET',
+              headers: {
+                  'Content-type': 'application/json; charset=utf-8'
+              }
+          }).then((response) => {
+              return response.json();
+          }, (failure) => {
+              showFailure(failure);
+              return [];
+          });
+      }
+      
+      var getWaypoints = (tripIds, date) => {
+          let toDate = new Date(date);
+          toDate.setDate(toDate.getDate() + 1);
+          let toDateStr = toDate.getFullYear() + '-' + `${toDate.getUTCMonth()+1}`.padStart(2, '0') + '-' + `${toDate.getUTCDate()}`.padStart(2, '0');
+          
+          let body = {
+              id: `in.(${tripIds.join()})`,
+              select: `id,tId,waypoints(id,date,latitude,longitude,deviation,opStatus,onBoard,direction,driver)`,
+              'waypoints.and': `(date.gte.${date},date.lt.${toDateStr})`,
+              'waypoints.order': 'date.asc'
+          }
+          let url = new URL(`${state.url}/trips`);
+          url.search = new URLSearchParams(body);
+
+          return fetch(url, {
+              method: 'GET',
+              headers: {
+                  'Content-type': 'application/json; charset=utf-8'
+              },
+          }).then((response) => {
+              return response.json();
+          }).then((trips) => {
+              // filter out any trips without waypoints
+              trips = trips.filter((t) => t['waypoints'].length > 0)
+              
+              // get the first trip with waypoints
+              if (trips.length > 0)
+                  return trips[0];
+
+              //showFailure('No trips found for this date');
+              return null;
+          }, (failure) => {
+              showFailure(failure);
+              return null;
+          });
+          
+      }
+
+      /**
+       * Route Page
+       */
+      var RoutePage = (onSelectedCB) => {
+          var _state = {
+              page: document.querySelector('#route-page'),
+              routes: [],
+              onSelectedCB: null,
+          };
+
+          var obj = {
+              initialize: function(onSelectedCB) {
+                  _state.onSelectedCB = onSelectedCB;
+              },
+              onLoad: function() {
+                  getRoutes()
+                      .then((routes) => {
+                          _state.routes = routes;
+                          this.refresh();
+                      });
+
+                  this.show();
+              },
+              onUnLoad: function() {
+                  _state.routes = [];
+                  this.hide();
+              },
+              refresh: function() {
+                  let routeContainer = document.querySelector('#route-container');
+                  routeContainer.removeAll();
+                  _state.routes.forEach((route) => {
+                      let d = document.createElement("a");
+                      d.classList.add('panel-block');
+                      d.innerHTML = `${route.rId} - ${route.name}`;
+                      d.onclick = () => {
+                          _state.onSelectedCB(route);
+                      };
+                      routeContainer.appendChild(d);
+                  });
+              },
+              show: function() {
+                  _state.page.style.display = 'block';
+              },
+              hide: function() {
+                  _state.page.style.display = 'none';
+              }
+          };
+
+          obj.initialize(onSelectedCB);
+          
+          return obj;
+      }
+
+      /**
+       * Trip Page
+       */
+      var TripPage = (onSelectedCB, backCB) => {
+          var _state = {
+              route: null,
+              trips: {},
+              page: document.querySelector('#trip-page'),
+              onSelectedCB: null
+          }
+
+          var obj = {
+              initialize: function(onSelectedCB, backCB) {
+                  _state.onSelectedCB = onSelectedCB;
+
+                  // set up the callback for pressing back
+                  let btn = document.querySelector('#trip-back');
+                  btn.onclick = () => {
+                      backCB();
+                  }
+              },
+              onLoad: function(route) {
+                  _state.route = route;
+                  
+                  // set the title
+                  let header = document.querySelector('#trip-header');
+                  header.innerHTML = `${route.rId} - ${route.name}`;
+                  
+                  getTrips(_state.route)
+                      .then((trips) => {
+                          _state.trips = trips;
+                          this.refresh();
+                      });
+
+                  this.show();
+              },
+              onUnLoad: function() {
+                  _state.route = null;
+                  _state.trips = {};
+                  
+                  this.hide();
+              },
+              refresh: function() {
+                  let tripContainer = document.querySelector('#trip-container');
+                  tripContainer.removeAll();
+                  Object.keys(_state.trips).forEach((key) => {
+                      let runs = _state.trips[key];
+                      
+                      let d = document.createElement("a");
+                      d.classList.add('panel-block');
+                      d.innerHTML = key;
+                      d.onclick = () => {
+                          _state.onSelectedCB(_state.route, key, runs);
+                      }
+                      tripContainer.appendChild(d);
+                  });
+              },
+              show: function() {
+                  _state.page.style.display = 'block';
+              },
+              hide: function() {
+                  _state.page.style.display = 'none';
+              }
+          };
+
+          obj.initialize(onSelectedCB, backCB);
+          
+          return obj;
+      }
+
+      /**
+       * Visualization Page
+       */
+      var VisPage = (backCB) => {
+          var _state = {
+              route: null,
+              trip: null,
+              dates: [],
+              dateContainer: null,
+              page: document.querySelector('#visualization-page'),
+              map: null,
+              mapLayer: null,
+              playing: false,
+              playTimer: null,
+              playIndex: 0,
+              playbackSpeed: 1000, // in ms
+              graphType: 'passengers'
+          };
+
+          var obj = {
+              initialize: function(backCB) {
+                  // set up the callback for pressing 'Back'
+                  let btn = document.querySelector('#visualization-back');
+                  btn.onclick = () => {
+                      backCB(_state.route);
+                  };
+
+                  let graphType = document.querySelector('#visualization-graph-type');
+                  graphType.onchange = () => {
+                      _state.graphType = graphType.selectedOptions[0].value;
+                      // redraw
+                      if (_state.dateContainer) {
+                          let idx = _state.dateContainer.getSelectedIndex();
+                          if (idx >= 0) {
+                              this.mapWaypoints(_state.dates[idx].date);
+                          }
+                      }
+                  };
+
+                  // playback
+                  let playbackSpeed = document.querySelector('#visualization-playback-speed');
+                  playbackSpeed.onchange = () => {
+                      _state.playbackSpeed = 1000 / parseFloat(playbackSpeed.selectedOptions[0].value);
+                  };
+
+                  // set up the play button
+                  let playBtn = document.querySelector('#visualization-play');
+                  playBtn.onclick = () => {
+                      if (_state.playing) {
+                          this.stopPlaying();
+                      } else {
+                          this.startPlaying();
+                      }
+                  };                      
+              },
+              onLoad: function(route, trip) {
+                  _state.route = route;
+                  _state.trip = trip;
+                  _state.dates = [];
+
+                  // !mwd - We need to show ourselves BEFORE
+                  // we load our map, or it doesn't load correctly.
+                  this.show();
+
+                  // set the header
+                  let header = document.querySelector('#visualization-header');
+                  header.innerHTML = `${route.rId} - ${route.name}: Trip ${trip.id}`;
+                 
+                  // load the map
+                  if (!_state.map) {
+	              _state.map = L.map('mapid').setView([33.5084801, -86.8006611], 13);
+	              L.tileLayer('https://stamen-tiles-{s}.a.ssl.fastly.net/toner/{z}/{x}/{y}.png', {
+	                  id: 'mapbox.streets',
+	              }).addTo(_state.map);
+                  }
+                  // clear any layers
+                  if (_state.mapLayer) {
+                      _state.mapLayer.removeFrom(_state.map);
+                      _state.mapLayer = null;
+                  }
+                  
+                  // load the dates
+                  getTripDates(this.tripIds())
+                      .then((dates) => {
+                          _state.dates = dates;
+                          this.refresh();
+                      });
+              },
+              onUnLoad: function() {
+                  _state.route = null;
+                  _state.trip = null;
+                  _state.dates = [];
+                  _state.dateContainer = null;
+                  if (_state.mapLayer) {
+                      _state.mapLayer.removeFrom(_state.map);
+                      _state.mapLayer = null;
+                  }
+
+                  this.stopPlaying();
+                  _state.playIndex = 0;
+                  
+                  this.hide();
+              },
+              refresh: function() {
+                  let datesDiv = document.querySelector('#visualization-dates');
+                  let items = _state.dates.map((x) => x.date);
+
+                  // set up our container widget
+                  _state.dateContainer = DateContainer(datesDiv, items, (item) => {
+                      this.mapWaypoints(item);
+                  });
+              },
+              tripIds: function() {
+                  return _state.trip.runs.map((t) => t.id);
+              },
+              mapWaypoints: function(date) {
+                  // fetch the waypoints
+                  getWaypoints(this.tripIds(), date)
+                      .then((waypoints) => {
+                          // clear the old layer
+                          if (_state.mapLayer) {
+                              _state.mapLayer.removeFrom(_state.map);
+                              _state.mapLayer = null;
+                          }
+
+                          // create a new layer group
+		          _state.mapLayer = L.layerGroup([]);
+		          _state.mapLayer.addTo(_state.map);
+		          // add a shit ton of circles
+		          if (waypoints) {
+		              waypoints.waypoints.forEach((p) => {
+                                  radius = (() => {
+                                      if (_state.graphType === 'passengers') {
+                                          return 10 * ((p.onBoard + 1) * 3);
+                                      } else if (_state.graphType === 'deviation') {
+                                          return 10 * ((p.deviation + 1) * 3);
+                                      } else {
+                                          return 1;
+                                      }
+                                  })();
+                                  
+			          let circle = L.circle([p.latitude, p.longitude], {
+			              color: 'red',
+			              fillColor: '#f03',
+			              fillOpacity: 0.2,
+                                      stroke: false,
+			              radius: radius
+			          });
+			          _state.mapLayer.addLayer(circle);
+		              });
+		          }
+                      });
+              },
+              nextDate: function(idx) {
+                  if (_state.dates && idx < _state.dates.length) {
+                      _state.playIndex = idx;
+                      this.mapWaypoints(_state.dates[idx].date);
+                      
+                      // update our selection widget
+                      _state.dateContainer.select(idx);
+
+                      // iterate
+                      _state.playTimer = setTimeout(() => { this.nextDate(idx+1); }, _state.playbackSpeed);
+                  } else {
+                      _state.playIndex = 0;
+                      this.stopPlaying();
+                  }
+              },
+              stopPlaying: function() {
+                  if (_state.playTimer) {
+                      clearInterval(_state.playTimer);
+                      _state.playTimer = null;
+                  }
+
+                  _state.playing = false;
+                  
+                  let playBtn = document.querySelector('#visualization-play');
+                  playBtn.innerHTML = 'Play';
+              },
+              startPlaying: function() {
+                  _state.playing = true;
+                  _state.playTimer = setTimeout(() => {this.nextDate(_state.playIndex);}, 0);
+
+                  let playBtn = document.querySelector('#visualization-play');
+                  playBtn.innerHTML = 'Stop';
+              },
+              show: function() {
+                  _state.page.style.display = 'block';
+              },
+              hide: function() {
+                  _state.page.style.display = 'none';
+              }
+          };
+
+          obj.initialize(backCB);
+          
+          return obj;
+      }
+      
+      /**
+       * Object to Manage our DateList
+       */
+      var DateContainer = (container, items, onClickHandler) => {
+          var _state = {
+              container: container,
+              items: items,
+              selectedIdx: -1,
+              selected: null
+          };
+
+          var obj = {
+              select: function(idx) {
+                  if (_state.selected) {
+                      _state.selected.classList.remove("has-background-primary");
+                  }
+                  
+                  // find our child by index
+                  let n = _state.container.childNodes[idx];
+                  if (n) {
+                      _state.selected = n;
+                      _state.selectedIdx = idx;
+                      
+                      n.classList.add("has-background-primary");
+
+                      // focus
+                      n.setAttribute('tabindex', '-1');
+                      n.focus();
+                      n.removeAttribute('tabindex');
+                  }
+              },
+              getSelectedIndex: function() {
+                  return _state.selectedIdx;
+              }
+          }
+          
+          // fill out the container
+          container.removeAll();
+          items.forEach((item, i) => {
+              let d = document.createElement("a");
+              d.classList.add('panel-block');
+              d.innerHTML = item;
+              d.onclick = () => {
+                  obj.select(i);
+                  onClickHandler(item);
+              };
+              container.appendChild(d);
+          });             
+          
+          return obj;
+      }
+      
+      var showFailure = (msg) => {
+	  document.querySelector('#error-msg').innerHTML = `<h2>${msg}</h2>`;
+      }
+
+      initialize();
+    </script>
+  </body>
+</html>
