@@ -223,23 +223,17 @@
           let body = {};
           let url = new URL(`${state.url}/routes`);
           url.search = new URLSearchParams(body);
-          
-          return fetch(url, {
-              method: 'GET',
-              headers: {
-                  'Content-type': 'application/json; charset=utf-8'
-              },
-          }).then((response) => {
-              return response.json();
-          }).then((routes) => {
-              // sort by rId
-              routes.sort((a, b) => parseInt(a.rId, 10) >= parseInt(b.rId, 10));
 
-              return routes;
-          }, (failure) => {
-              showFailure(failure);
-              return [];
-          });
+          return getAll(url, 'GET')
+              .then((routes) => {
+                  // sort by rId
+                  routes.sort((a, b) => parseInt(a.rId, 10) >= parseInt(b.rId, 10));
+                  
+                  return routes;
+              }, (failure) => {
+                  showFailure(failure);
+                  return [];
+              });
       }
 
       var getTrips = (route) => {
@@ -250,27 +244,21 @@
           let url = new URL(`${state.url}/trips`);
 	  url.search = new URLSearchParams(body);
 
-          return fetch(url, {
-              method: 'GET',
-              headers: {
-                  'Content-type': 'application/json; charset=utf-8'
-              }
-          }).then((response) => {
-              return response.json();
-          }).then((trips) => {
-              // group by the tripId
-              return trips.reduce((acc, trip) => {
-                  if (!Object.keys(acc).includes(trip['tId'])) {
-                      acc[trip['tId']] = [];
-                  }
-                  acc[trip['tId']].push(trip);
+          return getAll(url, 'GET')
+              .then((trips) => {
+                  // group by the tripId
+                  return trips.reduce((acc, trip) => {
+                      if (!Object.keys(acc).includes(trip['tId'])) {
+                          acc[trip['tId']] = [];
+                      }
+                      acc[trip['tId']].push(trip);
 
-                  return acc;
-              }, {});
-          }, (failure) => {
-              showFailure(failure);
-              return {};
-          });
+                      return acc;
+                  }, {});
+              }, (failure) => {
+                  showFailure(failure);
+                  return {};
+              });
       }
 
       var getTripDates = (tripIds) => {
@@ -281,17 +269,13 @@
           let url = new URL(`${state.url}/trip_dates`);
           url.search = new URLSearchParams(body);
 
-          return fetch(url, {
-              method: 'GET',
-              headers: {
-                  'Content-type': 'application/json; charset=utf-8'
-              }
-          }).then((response) => {
-              return response.json();
-          }, (failure) => {
-              showFailure(failure);
-              return [];
-          });
+          return getAll(url, 'GET')
+              .then((response) => {
+                  return response;
+              }, (failure) => {
+                  showFailure(failure);
+                  return [];
+              });
       }
       
       var getWaypoints = (tripIds, date) => {
@@ -308,30 +292,76 @@
           let url = new URL(`${state.url}/trips`);
           url.search = new URLSearchParams(body);
 
-          return fetch(url, {
-              method: 'GET',
-              headers: {
-                  'Content-type': 'application/json; charset=utf-8'
-              },
-          }).then((response) => {
-              return response.json();
-          }).then((trips) => {
-              // filter out any trips without waypoints
-              trips = trips.filter((t) => t['waypoints'].length > 0)
-              
-              // get the first trip with waypoints
-              if (trips.length > 0)
-                  return trips[0];
+          return getAll(url, 'GET')
+              .then((trips) => {
+                  // filter out any trips without waypoints
+                  trips = trips.filter((t) => t['waypoints'].length > 0)
+                  
+                  // get the first trip with waypoints
+                  if (trips.length > 0)
+                      return trips[0];
 
-              //showFailure('No trips found for this date');
-              return null;
-          }, (failure) => {
-              showFailure(failure);
-              return null;
-          });
-          
+                  //showFailure('No trips found for this date');
+                  return null;
+              }, (failure) => {
+                  showFailure(failure);
+                  return null;
+              });
       }
 
+      /**
+       * The api only returns up to 100 results
+       *  at a time, so paginate through.
+       */
+      var getAll = (url, method) => {
+          const PAGE_SIZE = 100;
+
+          var getNext = (url, method, page, results) => {
+              return fetch(url, {
+                  method: method,
+                  headers: {
+                      'Content-type': 'application/json; charset=utf-8',
+                      'Range': `${(page-1)*PAGE_SIZE}-${(page*PAGE_SIZE)-1}`,
+                      'Prefer': 'count=exact'
+                  }
+              }).then((response) => {
+                  // check the header
+                  let r = response.headers.get('content-range');
+                  let m = r.match(/(\d+)\-(\d+)\/(\d+)/)
+                  if (!m || m.length !== 4) {
+                      console.warn(`Unable to parse content-range ${r}`);
+                      return response.json().
+                          then((resp) => {
+                              return results.concat(resp);
+                          });
+                  }
+                  
+                  let a = parseInt(m[1]);
+                  let b = parseInt(m[2]);
+                  let total = parseInt(m[3]);
+                  
+                  if (b + 1 < total) {
+                      // get the next page
+                      return response.json().
+                          then((resp) => {
+                              return getNext(url, method, page+1, results.concat(resp));
+                          });
+                  } else {
+                      // all done
+                      return response.json().
+                          then((resp) => {
+                              return results.concat(resp);
+                          });
+                  }
+              });
+          }
+
+          return getNext(url, method, 1, [])
+              .then((results) => {
+                  return results;
+              })
+      }
+      
       /**
        * Route Page
        */
@@ -707,7 +737,8 @@
       }
       
       var showFailure = (msg) => {
-	  document.querySelector('#error-msg').innerHTML = `<h2>${msg}</h2>`;
+          console.error(`failure: ${msg}`);
+          //document.querySelector('#error-msg').innerHTML = `<h2>${msg}</h2>`;
       }
 
       initialize();
